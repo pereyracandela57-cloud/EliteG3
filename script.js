@@ -1767,9 +1767,9 @@
                                         }
 
                                         const failedFile = selectedFiles[index];
-                                        const fileName = failedFile?.name || 'archivo sin nombre';
-                                        const reason = result.reason?.message || 'Error desconocido';
-                                        failedFiles.push(`${fileName} (${reason})`);
+                                        const fileName = (failedFile && failedFile.name) ? failedFile.name : 'archivo sin nombre';
+                                        const reason = (result.reason && result.reason.message) ? result.reason.message : 'Error desconocido';
+                                        failedFiles.push(fileName + ' (' + reason + ')');
                                     });
 
                                     if (successfulCount > 0) {
