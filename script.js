@@ -33,6 +33,9 @@
             await ref.put(file);
             return ref.getDownloadURL();
         };
+        if (typeof window !== 'undefined') {
+            window.uploadLocalFileToStorage = uploadLocalFileToStorage;
+        }
 
         const GALLERY_LABELS = ['C', 'P', 'B', 'N', 'S', 'E', 'X', 'R'];
         const GENERAL_GALLERY_HIDDEN_LABELS = ['R'];
