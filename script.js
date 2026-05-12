@@ -1736,17 +1736,15 @@
                                 alert('Uno o más archivos no son válidos. Usá imagen o video.');
                                 return;
                             }
-                            const readFileAsDataUrl = (file) => new Promise((resolve, reject) => {
-                                const reader = new FileReader();
-                                reader.onload = () => resolve({
-                                    url: String(reader.result || ''),
-                                    type: file.type && file.type.startsWith('video/') ? 'video' : 'image'
-                                });
-                                reader.onerror = () => reject(new Error('No se pudo leer uno de los archivos seleccionados.'));
-                                reader.readAsDataURL(file);
-                            });
 
-                            Promise.all(selectedFiles.map(readFileAsDataUrl))
+                            Promise.all(selectedFiles.map(async (file) => {
+                                const uploadTarget = file.type && file.type.startsWith('video/') ? 'perfiles/videos' : 'perfiles/fotos';
+                                const uploadedUrl = await uploadLocalFileToStorage(file, uploadTarget);
+                                return {
+                                    url: uploadedUrl,
+                                    type: file.type && file.type.startsWith('video/') ? 'video' : 'image'
+                                };
+                            }))
                                 .then((filesData) => {
                                     filesData.forEach((fileData, index) => {
                                         postMedia(fileData.url, fileData.type, index === 0);
@@ -1755,7 +1753,7 @@
                                     resetAddMediaModalFields();
                                 })
                                 .catch((error) => {
-                                    alert(error.message || 'No se pudo leer el archivo seleccionado.');
+                                    alert(error.message || 'No se pudo subir el archivo seleccionado.');
                                 });
                             return;
                         }
