@@ -200,6 +200,8 @@
 
             return null;
         };
+        const PERFIL_CACHE_KEY = 'eliteg3_cache_perfiles_v1';
+        const ANON_GALLERY_CACHE_KEY = 'eliteg3_cache_anon_gallery_v1';
         const BLOCKED_MEDIA_HOST_PATTERNS = ['eporner.com'];
         const isBlockedMediaUrl = (rawUrl = '') => {
             const normalized = String(rawUrl || '').trim();
@@ -2837,6 +2839,24 @@ const getInitialCatFormData = () => ({
                 const anonGalleryRef = db.ref(ANON_GALLERY_NODE_PATH);
                 let perfilesData = {};
                 let anonGalleryData = {};
+                const persistCachedData = (cacheKey, payload) => {
+                    try {
+                        localStorage.setItem(cacheKey, JSON.stringify(payload || {}));
+                    } catch (error) {
+                        console.warn('No se pudo persistir caché local:', error);
+                    }
+                };
+                const readCachedData = (cacheKey) => {
+                    try {
+                        const raw = localStorage.getItem(cacheKey);
+                        if (!raw) return {};
+                        const parsed = JSON.parse(raw);
+                        return parsed && typeof parsed === 'object' ? parsed : {};
+                    } catch (error) {
+                        console.warn('No se pudo leer caché local:', error);
+                        return {};
+                    }
+                };
                 const refreshPerfilesState = () => {
                     const listaPerfiles = Object.keys(perfilesData || {}).map(key => ({
                         ...mapProfileToFormData(perfilesData[key]),
@@ -2846,12 +2866,17 @@ const getInitialCatFormData = () => ({
                     const hasAnonGallery = Object.values(anonProfile.galeria || {}).some((items) => Array.isArray(items) && items.length > 0);
                     setPerfiles(hasAnonGallery ? [...listaPerfiles, anonProfile] : listaPerfiles);
                 };
+                perfilesData = readCachedData(PERFIL_CACHE_KEY);
+                anonGalleryData = readCachedData(ANON_GALLERY_CACHE_KEY);
+                refreshPerfilesState();
                 perfilesRef.on('value', (snapshot) => {
                     perfilesData = snapshot.val() || {};
+                    persistCachedData(PERFIL_CACHE_KEY, perfilesData);
                     refreshPerfilesState();
                 });
                 anonGalleryRef.on('value', (snapshot) => {
                     anonGalleryData = snapshot.val() || {};
+                    persistCachedData(ANON_GALLERY_CACHE_KEY, anonGalleryData);
                     const audios = Array.isArray(anonGalleryData?.audios)
                         ? anonGalleryData.audios
                             .map((audio) => ({
