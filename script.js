@@ -33,6 +33,7 @@
             await ref.put(file);
             return ref.getDownloadURL();
         };
+        window.uploadLocalFileToStorage = uploadLocalFileToStorage;
 
         const GALLERY_LABELS = ['C', 'P', 'B', 'N', 'S', 'E', 'X', 'R'];
         const GENERAL_GALLERY_HIDDEN_LABELS = ['R'];
@@ -1736,10 +1737,15 @@
                                 alert('Uno o más archivos no son válidos. Usá imagen o video.');
                                 return;
                             }
+                            const uploader = window.opener?.uploadLocalFileToStorage || window.uploadLocalFileToStorage;
+                            if (typeof uploader !== 'function') {
+                                alert('No se encontró la función de carga de archivos. Recargá la ventana principal e intentá nuevamente.');
+                                return;
+                            }
 
                             Promise.all(selectedFiles.map(async (file) => {
                                 const uploadTarget = file.type && file.type.startsWith('video/') ? 'perfiles/videos' : 'perfiles/fotos';
-                                const uploadedUrl = await uploadLocalFileToStorage(file, uploadTarget);
+                                const uploadedUrl = await uploader(file, uploadTarget);
                                 return {
                                     url: uploadedUrl,
                                     type: file.type && file.type.startsWith('video/') ? 'video' : 'image'
