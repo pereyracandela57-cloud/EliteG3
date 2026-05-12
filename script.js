@@ -2858,9 +2858,50 @@ const getInitialCatFormData = () => ({
                 const anonGalleryRef = db.ref(ANON_GALLERY_NODE_PATH);
                 let perfilesData = {};
                 let anonGalleryData = {};
+                const MAX_LOCAL_CACHE_BYTES = 4 * 1024 * 1024;
+                const shrinkCachePayload = (payload) => {
+                    if (!payload || typeof payload !== 'object') return {};
+                    if (Array.isArray(payload)) return payload.slice(0, 100);
+
+                    return Object.fromEntries(
+                        Object.entries(payload).slice(0, 400).map(([profileId, profile]) => {
+                            const normalized = mapProfileToFormData(profile || {});
+                            return [profileId, {
+                                nombre: normalized.nombre,
+                                nacionalidad: normalized.nacionalidad,
+                                ciudad: normalized.ciudad,
+                                profesion: normalized.profesion,
+                                fechaNacimiento: normalized.fechaNacimiento,
+                                estaturaCm: normalized.estaturaCm,
+                                fotos: (normalized.fotos || []).slice(0, 1),
+                                galeria: {
+                                    fotos: (normalized?.galeria?.fotos || []).slice(0, 8),
+                                    gifs: (normalized?.galeria?.gifs || []).slice(0, 8),
+                                    videos: (normalized?.galeria?.videos || []).slice(0, 8)
+                                },
+                                batallaFotosPreferidas: sanitizeBattlePhotoPreferences(normalized.batallaFotosPreferidas),
+                                puntuaciones: normalized.puntuaciones
+                            }];
+                        })
+                    );
+                };
                 const persistCachedData = (cacheKey, payload) => {
                     try {
-                        localStorage.setItem(cacheKey, JSON.stringify(payload || {}));
+                        const rawPayload = JSON.stringify(payload || {});
+                        if (rawPayload.length <= MAX_LOCAL_CACHE_BYTES) {
+                            localStorage.setItem(cacheKey, rawPayload);
+                            return;
+                        }
+
+                        const reducedPayload = shrinkCachePayload(payload);
+                        const reducedRaw = JSON.stringify(reducedPayload);
+                        if (reducedRaw.length <= MAX_LOCAL_CACHE_BYTES) {
+                            localStorage.setItem(cacheKey, reducedRaw);
+                            return;
+                        }
+
+                        localStorage.removeItem(cacheKey);
+                        console.warn('Caché local omitida por tamaño excesivo.');
                     } catch (error) {
                         console.warn('No se pudo persistir caché local:', error);
                     }
