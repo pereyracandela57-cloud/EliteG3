@@ -1737,23 +1737,43 @@
                                 return;
                             }
 
-                            Promise.all(selectedFiles.map(async (file) => {
+                            Promise.allSettled(selectedFiles.map(async (file) => {
                                 const uploadTarget = file.type && file.type.startsWith('video/') ? 'perfiles/videos' : 'perfiles/fotos';
                                 const uploadedUrl = await uploadLocalFileToStorage(file, uploadTarget);
                                 return {
+                                    name: file.name || 'archivo sin nombre',
                                     url: uploadedUrl,
                                     type: file.type && file.type.startsWith('video/') ? 'video' : 'image'
                                 };
                             }))
-                                .then((filesData) => {
-                                    filesData.forEach((fileData, index) => {
-                                        postMedia(fileData.url, fileData.type, index === 0);
+                                .then((results) => {
+                                    const failedFiles = [];
+                                    let firstSuccessfulPosted = false;
+                                    let successfulCount = 0;
+
+                                    results.forEach((result, index) => {
+                                        if (result.status === 'fulfilled') {
+                                            const fileData = result.value;
+                                            postMedia(fileData.url, fileData.type, !firstSuccessfulPosted);
+                                            firstSuccessfulPosted = true;
+                                            successfulCount += 1;
+                                            return;
+                                        }
+
+                                        const failedFile = selectedFiles[index];
+                                        const fileName = failedFile?.name || 'archivo sin nombre';
+                                        const reason = result.reason?.message || 'Error desconocido';
+                                        failedFiles.push(`${fileName} (${reason})`);
                                     });
-                                    document.getElementById('miModal').style.display = 'none';
-                                    resetAddMediaModalFields();
-                                })
-                                .catch((error) => {
-                                    alert(error.message || 'No se pudo subir el archivo seleccionado.');
+
+                                    if (successfulCount > 0) {
+                                        document.getElementById('miModal').style.display = 'none';
+                                        resetAddMediaModalFields();
+                                    }
+
+                                    if (failedFiles.length > 0) {
+                                        alert(`${failedFiles.length} archivo(s) no se pudieron subir: ${failedFiles.join(', ')}`);
+                                    }
                                 });
                             return;
                         }
