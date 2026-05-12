@@ -15,7 +15,24 @@
             firebase.initializeApp(firebaseConfig);
         }
         const db = firebase.database();
+        const storage = firebase.storage();
         const { useState, useEffect, useMemo, useRef } = React;
+
+        
+        const buildStoragePath = (folder, fileName = '') => {
+            const safeFolder = String(folder || 'uploads').replace(/^\/+|\/+$/g, '');
+            const cleanedName = String(fileName || 'archivo').trim().replace(/[^a-zA-Z0-9._-]/g, '_');
+            const timestamp = Date.now();
+            const randomSuffix = Math.random().toString(36).slice(2, 10);
+            return `${safeFolder}/${timestamp}-${randomSuffix}-${cleanedName || 'archivo'}`;
+        };
+        const uploadLocalFileToStorage = async (file, folder = 'uploads') => {
+            if (!file) throw new Error('Archivo inválido.');
+            const path = buildStoragePath(folder, file.name || 'archivo');
+            const ref = storage.ref(path);
+            await ref.put(file);
+            return ref.getDownloadURL();
+        };
 
         const GALLERY_LABELS = ['C', 'P', 'B', 'N', 'S', 'E', 'X', 'R'];
         const GENERAL_GALLERY_HIDDEN_LABELS = ['R'];
@@ -2557,8 +2574,8 @@ const getInitialCatFormData = () => ({
                 const selectedFile = event.target.files?.[0];
                 if (!selectedFile) return;
                 try {
-                    const dataUrl = await readFileAsDataUrl(selectedFile);
-                    setFormData(prev => withProfilePhotoSyncedToGallery(prev, dataUrl));
+                    const uploadedUrl = await uploadLocalFileToStorage(selectedFile, 'perfiles/fotos');
+                    setFormData(prev => withProfilePhotoSyncedToGallery(prev, uploadedUrl));
                 } catch (error) {
                     console.error('Error al cargar foto de perfil local:', error);
                 } finally {
@@ -2594,7 +2611,7 @@ const getInitialCatFormData = () => ({
                     let finalUrl = String(anonMediaUrl || '').trim();
                     if (anonMediaSource === 'file') {
                         if (!anonMediaFile) throw new Error('Seleccioná un archivo local.');
-                        finalUrl = await readFileAsDataUrl(anonMediaFile);
+                        finalUrl = await uploadLocalFileToStorage(anonMediaFile, 'anonimo/galeria');
                     }
                     await addAnonymousGalleryItem({ url: finalUrl, label: anonMediaLabel, autor: anonMediaAuthor, forcedTag });
                     setAnonMediaUrl('');
@@ -2619,7 +2636,7 @@ const getInitialCatFormData = () => ({
                             setGalleryAudioError('Seleccioná un archivo de audio.');
                             return;
                         }
-                        normalizedUrl = await readFileAsDataUrl(galleryAudioFile);
+                        normalizedUrl = await uploadLocalFileToStorage(galleryAudioFile, 'anonimo/audios');
                     } else if (!normalizedUrl) {
                         setGalleryAudioError('Completá la URL del audio.');
                         return;
@@ -2689,8 +2706,22 @@ const getInitialCatFormData = () => ({
                             : db.ref(`perfiles/${id}/galeria/${tag}`);
                         const snapshot = await galleryRef.once('value');
                         const currentPhotos = snapshot.val() || [];
-                        const normalizedUrl = (url || '').trim();
+                        let normalizedUrl = (url || '').trim();
                         if (!normalizedUrl) return;
+                        if (normalizedUrl.startsWith('data:')) {
+                            try {
+                                const blobResponse = await fetch(normalizedUrl);
+                                const blob = await blobResponse.blob();
+                                const extension = (blob.type || '').split('/')[1] || 'bin';
+                                const fileName = `media.${extension}`;
+                                const uploadTarget = mediaType === 'video' ? 'perfiles/videos' : 'perfiles/fotos';
+                                const convertedFile = new File([blob], fileName, { type: blob.type || 'application/octet-stream' });
+                                normalizedUrl = await uploadLocalFileToStorage(convertedFile, uploadTarget);
+                            } catch (uploadErr) {
+                                console.error('No se pudo subir el archivo local a Firebase Storage:', uploadErr);
+                                return;
+                            }
+                        }
                         const updatedPhotos = [...currentPhotos, { url: normalizedUrl, label: GALLERY_LABELS.includes(label) ? label : '', type: detectGalleryItemType(normalizedUrl, mediaType), autor: normalizeGalleryAuthor(autor) }];
 
                         await galleryRef.set(updatedPhotos);
