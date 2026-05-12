@@ -2658,6 +2658,26 @@ const getInitialCatFormData = () => ({
                     setGalleryAudioError('No se pudo guardar el audio en Firebase.');
                 }
             };
+            const removeGalleryAudioTrack = async (trackIndex) => {
+                setGalleryAudioError('');
+                if (!Number.isInteger(trackIndex) || trackIndex < 0) return;
+                try {
+                    const audioRef = db.ref(`${ANON_GALLERY_NODE_PATH}/audios`);
+                    const snapshot = await audioRef.once('value');
+                    const currentAudios = Array.isArray(snapshot.val()) ? snapshot.val() : [];
+                    if (trackIndex >= currentAudios.length) return;
+                    const removedTrack = currentAudios[trackIndex];
+                    const updatedAudios = currentAudios.filter((_, index) => index !== trackIndex);
+                    await audioRef.set(updatedAudios);
+                    const removedUrl = String(removedTrack?.url || '').trim();
+                    if (removedUrl) {
+                        if (selectedGalleryAudioA === removedUrl) setSelectedGalleryAudioA('');
+                        if (selectedGalleryAudioB === removedUrl) setSelectedGalleryAudioB('');
+                    }
+                } catch (error) {
+                    setGalleryAudioError('No se pudo borrar el audio de Firebase.');
+                }
+            };
             const handleDelete = async (id, e) => {
                 e.stopPropagation(); // Esto es para que no se abra la foto cuando hacés click en la cruz
                 if(confirm('¿Estás seguro de que querés eliminar esto, corazón?')) {
@@ -5358,6 +5378,30 @@ const saveProfile = (e) => {
                                         >
                                             Guardar audio en Firebase
                                         </button>
+                                        {galleryAudioTracks.length > 0 && (
+                                            <div className="space-y-2 pt-1">
+                                                {galleryAudioTracks.map((track, index) => (
+                                                    <div
+                                                        key={`${track.url}-${index}`}
+                                                        className="theme-surface-soft border theme-border-secondary rounded-xl px-3 py-2 flex items-center justify-between gap-3"
+                                                    >
+                                                        <div className="min-w-0">
+                                                            <p className="text-sm font-bold text-cyan-100 truncate">{track.nombre}</p>
+                                                            <p className="text-[11px] text-cyan-200/70 truncate">{track.url}</p>
+                                                        </div>
+                                                        <button
+                                                            type="button"
+                                                            onClick={() => removeGalleryAudioTrack(index)}
+                                                            className="w-8 h-8 rounded-full border border-rose-400/70 text-rose-200 bg-rose-500/20 hover:bg-rose-500/35 hover:text-white transition-all font-black text-lg leading-none shrink-0"
+                                                            aria-label={`Eliminar audio ${track.nombre}`}
+                                                            title="Eliminar audio"
+                                                        >
+                                                            ×
+                                                        </button>
+                                                    </div>
+                                                ))}
+                                            </div>
+                                        )}
                                         {galleryAudioError ? <p className="text-xs font-black uppercase tracking-[0.12em] text-rose-300">{galleryAudioError}</p> : null}
                                         </div>
                                     )}
