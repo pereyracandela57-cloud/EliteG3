@@ -2240,6 +2240,7 @@
             const [selectedBattleGroupKey, setSelectedBattleGroupKey] = useState('');
             const [arenaBattleState, setArenaBattleState] = useState({});
             const [arenaGlobalState, setArenaGlobalState] = useState({});
+            const [isArenaStateReady, setIsArenaStateReady] = useState(false);
             const [showResetArenaPicker, setShowResetArenaPicker] = useState(false);
             const [resetArenaTarget, setResetArenaTarget] = useState(ARENAS[0] || '');
             const [scoreBreakdownItemDetail, setScoreBreakdownItemDetail] = useState(null);
@@ -2937,12 +2938,24 @@ const getInitialCatFormData = () => ({
                 setCategorias(INITIAL_CATEGORIES);
 
                 const arenasRef = db.ref('arenaBattleState');
+                let hasArenaBattleSnapshot = false;
+                let hasArenaGlobalSnapshot = false;
+                const markArenaStateReady = () => {
+                    if (hasArenaBattleSnapshot && hasArenaGlobalSnapshot) {
+                        setIsArenaStateReady(true);
+                    }
+                };
+
                 arenasRef.on('value', (snapshot) => {
+                    hasArenaBattleSnapshot = true;
                     setArenaBattleState(snapshot.val() || {});
+                    markArenaStateReady();
                 });
                 const arenaGlobalRef = db.ref('arenaGlobalState');
                 arenaGlobalRef.on('value', (snapshot) => {
+                    hasArenaGlobalSnapshot = true;
                     setArenaGlobalState(snapshot.val() || {});
+                    markArenaStateReady();
                 });
 
                 return () => {
@@ -4246,7 +4259,7 @@ const saveProfile = (e) => {
                 }));
 
                 Promise.all(updates).catch(() => {});
-            }, [arenaBattleState, arenaGlobalState, perfiles]);
+            }, [arenaBattleState, arenaGlobalState, perfiles, isArenaStateReady]);
 
             useEffect(() => {
                 if (!perfiles.length) return;
@@ -4293,7 +4306,7 @@ const saveProfile = (e) => {
                     .filter(p => p?.firebaseId && (p?.nombre || '').trim())
                     .sort((a, b) => (a.nombre || '').localeCompare((b.nombre || ''), 'es', { sensitivity: 'base' }));
 
-                if (orderedProfiles.length < 2) return;
+                if (!isArenaStateReady || orderedProfiles.length < 2) return;
 
                 const mode = String(scopeId || 'GENERAL').trim().toUpperCase();
                 const participants = buildArenaParticipants(orderedProfiles, mode, groupKey);
@@ -6514,7 +6527,10 @@ const saveProfile = (e) => {
                             </div>
                         </div>
                     )}
-                    {requiresBattleGroupSelection && !selectedBattleGroupKey && (
+                    {!isArenaStateReady && (
+                        <p className="text-xs text-slate-400">Cargando historial de batallas...</p>
+                    )}
+                    {isArenaStateReady && requiresBattleGroupSelection && !selectedBattleGroupKey && (
                         <p className="text-xs text-slate-400">Seleccioná una opción para habilitar las batallas.</p>
                     )}
                     <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-6">
@@ -6525,7 +6541,7 @@ const saveProfile = (e) => {
                             return (
                     <button
                         key={arenaName}
-                        disabled={requiresBattleGroupSelection && !selectedBattleGroupKey}
+                        disabled={!isArenaStateReady || (requiresBattleGroupSelection && !selectedBattleGroupKey)}
                         onClick={() => {
                             setSelectedArena(arenaName);
                             if (!arenaBattleState[arenaKey]) initArenaBattle(arenaName, selectedBattleScope, selectedBattleGroupKey);
@@ -6628,7 +6644,7 @@ const saveProfile = (e) => {
                     </div>
                 </div>
 
-                {!arenaState && (
+                {isArenaStateReady && !arenaState && (
                     <div className="theme-surface-card border theme-border-secondary rounded-2xl p-8 text-center">
                         <p className="text-sm text-slate-300">Presioná para iniciar esta arena.</p>
                         <button
