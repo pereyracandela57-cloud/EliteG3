@@ -1403,10 +1403,11 @@
                     <input type="text" id="nuevaFotoAutor" placeholder="Autor (opcional)" style="width: 100%; padding: 12px; margin-top: 15px; background: #020617; border: 1px solid rgba(71,85,105,0.92); color: #e2e8f0; border-radius: 8px; outline: none; box-shadow: inset 0 1px 0 rgba(148,163,184,0.18);">
                     <input type="hidden" id="slotSelectionId" value="">
                     <p id="slotGalleryHint" style="display:none; margin:10px 0 0; font-size:11px; color:#93c5fd;">Tip: para “Elegir desde galería” tocá cualquier imagen para asignarla.</p>
-                    <button onclick="addMediaFromModal()"
+                    <button id="guardarArchivoButton" onclick="addMediaFromModal()"
                         style="margin-top: 15px; width: 100%; padding: 10px; background: linear-gradient(180deg, rgba(14,116,144,0.95), rgba(8,47,73,0.95)); color: #ecfeff; border: 1px solid rgba(103,232,249,0.9); border-radius: 8px; font-weight: 800; cursor: pointer; text-transform: uppercase; letter-spacing: 0.08em; box-shadow: 0 0 14px rgba(34,211,238,0.4);">
                         Guardar
                     </button>
+                    <p id="uploadStatusMessage" style="display:none; margin:10px 0 0; font-size:11px; color:#67e8f9; font-weight:800; letter-spacing:0.08em; text-transform:uppercase;"></p>
                     <button id="modalPlayFullscreenButton" type="button" onclick="startFullscreenPlaybackFromModal(event)"
                         style="margin-top: 10px; width: 100%; padding: 10px; background: linear-gradient(180deg, rgba(30,64,175,0.95), rgba(30,58,138,0.95)); color: #dbeafe; border: 1px solid rgba(147,197,253,0.9); border-radius: 8px; font-weight: 800; cursor: pointer; text-transform: uppercase; letter-spacing: 0.08em; box-shadow: 0 0 14px rgba(59,130,246,0.38);">
                         Play pantalla completa
@@ -1626,6 +1627,38 @@
                         return VALID_FILE_MIME_PREFIXES.some((prefix) => mime.startsWith(prefix)) || VALID_FILE_EXTENSIONS.includes(ext);
                     }
 
+                    function setUploadStatus(message = '', isError = false) {
+                        const status = document.getElementById('uploadStatusMessage');
+                        const saveButton = document.getElementById('guardarArchivoButton');
+                        if (status) {
+                            status.textContent = message;
+                            status.style.display = message ? 'block' : 'none';
+                            status.style.color = isError ? '#fda4af' : '#67e8f9';
+                        }
+                        if (saveButton) {
+                            saveButton.disabled = Boolean(message) && !isError;
+                            saveButton.style.opacity = saveButton.disabled ? '0.65' : '1';
+                            saveButton.style.cursor = saveButton.disabled ? 'wait' : 'pointer';
+                        }
+                    }
+
+                    function readLocalFileAsDataUrl(file) {
+                        return new Promise((resolve, reject) => {
+                            const reader = new FileReader();
+                            reader.onload = () => resolve(String(reader.result || ''));
+                            reader.onerror = () => reject(new Error('No se pudo leer el archivo local.'));
+                            reader.readAsDataURL(file);
+                        });
+                    }
+
+                    async function uploadLocalFileFromGalleryWindow(file, uploadTarget) {
+                        const parentUploader = window.opener && !window.opener.closed ? window.opener.uploadLocalFileToStorage : null;
+                        if (typeof parentUploader === 'function') {
+                            return parentUploader(file, uploadTarget);
+                        }
+                        return readLocalFileAsDataUrl(file);
+                    }
+
                     function openSlotActionModal(slotId, mode = '') {
                         activeSlotSelectionId = slotId || '';
                         const modal = document.getElementById('miModal');
@@ -1712,7 +1745,7 @@
                         updateSlotGalleryButtons();
                     }
 
-                    function addMediaFromModal() {
+                    async function addMediaFromModal() {
                         const urlInput = document.getElementById('nuevaFotoUrl');
                         const localInput = document.getElementById('nuevoArchivoLocal');
                         const labelInput = document.getElementById('nuevaFotoEtiqueta');
@@ -1737,27 +1770,36 @@
                             const invalidFile = selectedFiles.find((file) => !isAllowedFileType(file));
                             if (invalidFile) {
                                 alert('Uno o más archivos no son válidos. Usá imagen o video.');
+                                setUploadStatus('', false);
                                 return;
                             }
 
-                            Promise.all(selectedFiles.map(async (file) => {
-                                const uploadTarget = file.type && file.type.startsWith('video/') ? 'perfiles/videos' : 'perfiles/fotos';
-                                const uploadedUrl = await uploadLocalFileToStorage(file, uploadTarget);
-                                return {
-                                    url: uploadedUrl,
-                                    type: file.type && file.type.startsWith('video/') ? 'video' : 'image'
-                                };
-                            }))
-                                .then((filesData) => {
-                                    filesData.forEach((fileData, index) => {
-                                        postMedia(fileData.url, fileData.type, index === 0);
-                                    });
-                                    document.getElementById('miModal').style.display = 'none';
-                                    resetAddMediaModalFields();
-                                })
-                                .catch((error) => {
-                                    alert(error.message || 'No se pudo subir el archivo seleccionado.');
+                            setUploadStatus('Subiendo ' + selectedFiles.length + ' archivo(s)...', false);
+                            try {
+                                const filesData = await Promise.all(selectedFiles.map(async (file) => {
+                                    const uploadTarget = file.type && file.type.startsWith('video/') ? 'perfiles/videos' : 'perfiles/fotos';
+                                    const uploadedUrl = await uploadLocalFileFromGalleryWindow(file, uploadTarget);
+                                    return {
+                                        url: uploadedUrl,
+                                        type: file.type && file.type.startsWith('video/') ? 'video' : 'image'
+                                    };
+                                }));
+                                filesData.forEach((fileData, index) => {
+                                    postMedia(fileData.url, fileData.type, index === 0);
                                 });
+                                document.getElementById('miModal').style.display = 'none';
+                                resetAddMediaModalFields();
+                                setUploadStatus('', false);
+                            } catch (error) {
+                                const message = error && error.message ? error.message : 'No se pudo subir el archivo seleccionado.';
+                                setUploadStatus(message, true);
+                                alert(message);
+                            }
+                            return;
+                        }
+
+                        if (!normalizedUrl) {
+                            alert('Pegá una URL o seleccioná un archivo local.');
                             return;
                         }
 
